@@ -18,6 +18,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/system_properties.h>
 #include <link.h>
 #include <elf.h>
 #include <ucontext.h>
@@ -26,6 +27,9 @@
 #include <stdbool.h>
 #include <dirent.h>
 #include <regex.h>
+#if defined(__GLIBC__)
+#include <execinfo.h>
+#endif
 #include <ctype.h>
 
 #define LOG_TAG "UniversalStub"
@@ -191,6 +195,7 @@ void dump_generated_symbols(void);
 void *jit_alloc(size_t size);
 void jit_free_all(void);
 void *jit_write_code(void *dest, const void *src, size_t size);
+int jit_protect_code(void *addr, size_t size);
 
 // ============ CONFIG RESOLVER ============
 int resolve_config(const char *key, char *out_value, size_t out_size);

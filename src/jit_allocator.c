@@ -10,16 +10,22 @@ static jit_allocator_t g_jit = {
 void *jit_alloc(size_t size) {
     pthread_mutex_lock(&g_jit.mutex);
 
-    // Round up to page size
-    size_t alloc_size = ((size + JIT_PAGE_SIZE - 1) / JIT_PAGE_SIZE) * JIT_PAGE_SIZE;
-
-    if (g_jit.count >= MAX_JIT_PAGES) {
-        LOGE("[JIT] Max JIT pages reached!");
+    if (size == 0 || size > SIZE_MAX - JIT_PAGE_SIZE + 1) {
+        LOGE("[JIT] Invalid allocation size: %zu", size);
         pthread_mutex_unlock(&g_jit.mutex);
         return NULL;
     }
 
-    void *mem = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE | PROT_EXEC,
+    // Round up to page size after checking for overflow.
+    size_t alloc_size = ((size + JIT_PAGE_SIZE - 1) / JIT_PAGE_SIZE) * JIT_PAGE_SIZE;
+
+    if (g_jit.count >= MAX_JIT_PAGES || alloc_size > SIZE_MAX - g_jit.used) {
+        LOGE("[JIT] JIT allocation limit reached!");
+        pthread_mutex_unlock(&g_jit.mutex);
+        return NULL;
+    }
+
+    void *mem = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
     if (mem == MAP_FAILED) {
@@ -60,20 +66,49 @@ void jit_free_all(void) {
     pthread_mutex_unlock(&g_jit.mutex);
 }
 
-void *jit_write_code(void *dest, const void *src, size_t size) {
-    // Make the page temporarily writable
-    size_t page_size = sysconf(_SC_PAGESIZE);
-    void *page = (void *)(((uintptr_t)dest) & ~(page_size - 1));
+static int jit_set_page_permissions(void *addr, size_t size, int prot) {
+    if (!addr || size == 0) return -1;
 
-    if (mprotect(page, page_size, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+    long sys_page_size = sysconf(_SC_PAGESIZE);
+    size_t page_size = (sys_page_size > 0) ? (size_t)sys_page_size : JIT_PAGE_SIZE;
+    uintptr_t start = (uintptr_t)addr & ~(page_size - 1);
+    uintptr_t end;
+
+    if ((uintptr_t)addr > UINTPTR_MAX - size ||
+        (uintptr_t)addr + size > UINTPTR_MAX - page_size + 1) {
+        LOGE("[JIT] Permission range overflow");
+        return -1;
+    }
+
+    end = ((uintptr_t)addr + size + page_size - 1) & ~(page_size - 1);
+
+    if (mprotect((void *)start, end - start, prot) != 0) {
         LOGE("[JIT] mprotect failed: %s", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+int jit_protect_code(void *addr, size_t size) {
+    if (!addr || size == 0) return -1;
+
+    __builtin___clear_cache(addr, (char *)addr + size);
+    return jit_set_page_permissions(addr, size, PROT_READ | PROT_EXEC);
+}
+
+void *jit_write_code(void *dest, const void *src, size_t size) {
+    if (!dest || !src || size == 0) return NULL;
+
+    if (jit_set_page_permissions(dest, size, PROT_READ | PROT_WRITE) != 0) {
         return NULL;
     }
 
     memcpy(dest, src, size);
 
-    // Flush instruction cache (ARM64)
-    __builtin___clear_cache(dest, (char *)dest + size);
+    if (jit_protect_code(dest, size) != 0) {
+        return NULL;
+    }
 
     return dest;
 }

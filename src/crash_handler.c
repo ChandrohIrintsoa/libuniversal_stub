@@ -1,5 +1,8 @@
 #include "universal_stub.h"
 #include <setjmp.h>
+#if defined(__GLIBC__)
+#include <execinfo.h>
+#endif
 
 static struct sigaction g_old_handlers[NSIG];
 static volatile sig_atomic_t g_in_crash_handler = 0;
@@ -347,7 +350,7 @@ void install_crash_handlers(void) {
     }
 
     // Allocate alternate signal stack
-    static char alt_stack[SIGSTKSZ * 2];
+    static char alt_stack[64 * 1024];
     stack_t ss = {
         .ss_sp = alt_stack,
         .ss_size = sizeof(alt_stack),

@@ -166,9 +166,11 @@ char *dlerror(void) {
 void *safe_memcpy(void *dest, const void *src, size_t n) {
     if (!dest || !src || n == 0) return dest;
 
-    // Check for overlapping regions
-    if ((src < dest && (char *)src + n > (char *)dest) ||
-        (dest < src && (char *)dest + n > (char *)src)) {
+    const unsigned char *src_bytes = (const unsigned char *)src;
+    unsigned char *dest_bytes = (unsigned char *)dest;
+
+    if ((src_bytes <= dest_bytes && n > (size_t)(dest_bytes - src_bytes)) ||
+        (dest_bytes < src_bytes && n > (size_t)(src_bytes - dest_bytes))) {
         LOGW("[UTIL] Overlapping memcpy detected, using memmove");
         return memmove(dest, src, n);
     }

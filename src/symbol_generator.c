@@ -352,7 +352,10 @@ static void *generate_arm64_stub(symbol_type_t type, const char *name) {
             break;
     }
 
-    __builtin___clear_cache(mem, (char *)mem + JIT_PAGE_SIZE);
+    if (jit_protect_code(mem, (size_t)idx * sizeof(uint32_t)) != 0) {
+        LOGE("[GEN] Failed to protect ARM64 stub for '%s'", name);
+        return NULL;
+    }
 
     LOGI("[GEN] Generated ARM64 stub for '%s' (type=%d) at %p", name, type, mem);
     return mem;
@@ -419,7 +422,10 @@ static void *generate_logging_stub(symbol_type_t type, const char *name) {
     code[idx++] = 0xA8C17BFD;  // ldp x29, x30, [sp], #16
     code[idx++] = 0xD65F03C0;  // ret
 
-    __builtin___clear_cache(mem, (char *)mem + JIT_PAGE_SIZE);
+    if (jit_protect_code(mem, (size_t)idx * sizeof(uint32_t)) != 0) {
+        LOGE("[GEN] Failed to protect logging stub for '%s'", name);
+        return NULL;
+    }
 
     LOGI("[GEN] Generated logging stub for '%s' at %p", name, mem);
     return mem;
@@ -604,7 +610,10 @@ void *generate_callback_wrapper(const char *name, int arg_count, symbol_type_t r
     code[idx++] = 0xA8C17BFD;
     code[idx++] = 0xD65F03C0;
 
-    __builtin___clear_cache(mem, (char *)mem + JIT_PAGE_SIZE);
+    if (jit_protect_code(mem, (size_t)idx * sizeof(uint32_t)) != 0) {
+        LOGE("[CALLBACK] Failed to protect wrapper '%s'", name);
+        return NULL;
+    }
 
     // Fixed: register with the actual JIT address (not a new generated stub)
     pthread_mutex_lock(&g_symbol_mutex);
