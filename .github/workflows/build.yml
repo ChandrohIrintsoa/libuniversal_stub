@@ -1,0 +1,60 @@
+name: Build libuniversal_stub
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # Permet de lancer manuellement
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26c
+          link-to-sdk: true
+
+      - name: Build for all architectures
+        run: |
+          export ANDROID_NDK_HOME=$ANDROID_NDK
+          make clean
+          make all-archs
+        env:
+          ANDROID_NDK: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+      - name: Upload ARM64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libuniversalstub-arm64
+          path: libs/arm64-v8a/libuniversalstub.so
+
+      - name: Upload ARM32 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libuniversalstub-arm32
+          path: libs/armeabi-v7a/libuniversalstub.so
+
+      - name: Upload x86_64 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libuniversalstub-x86_64
+          path: libs/x86_64/libuniversalstub.so
+
+      - name: Upload x86 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libuniversalstub-x86
+          path: libs/x86/libuniversalstub.so
+
+      - name: List all builds
+        run: |
+          echo "=== Build Results ==="
+          find libs/ -name "*.so" -exec ls -lh {} \;
+          echo "=== Done ==="
