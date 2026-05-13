@@ -149,6 +149,65 @@ int hide_root_traces(void) {
     return hidden;
 }
 
+
+static bool is_numeric_name(const char *name) {
+    if (!name || !*name) return false;
+
+    for (const char *p = name; *p; p++) {
+        if (!isdigit((unsigned char)*p)) return false;
+    }
+
+    return true;
+}
+
+static bool contains_debugger_name(const char *cmdline) {
+    static const char *DEBUGGER_NAMES[] = {
+        "gdb", "lldb", "strace", "ltrace", "frida", "ida", NULL
+    };
+
+    if (!cmdline) return false;
+
+    for (int i = 0; DEBUGGER_NAMES[i]; i++) {
+        if (strstr(cmdline, DEBUGGER_NAMES[i])) return true;
+    }
+
+    return false;
+}
+
+static void scan_proc_for_debuggers(void) {
+    DIR *proc_dir = opendir("/proc");
+    if (!proc_dir) return;
+
+    struct dirent *entry;
+    while ((entry = readdir(proc_dir)) != NULL) {
+        if (!is_numeric_name(entry->d_name)) continue;
+
+        char path[64];
+        snprintf(path, sizeof(path), "/proc/%s/cmdline", entry->d_name);
+
+        FILE *cmd = fopen(path, "r");
+        if (!cmd) continue;
+
+        char cmdline[512];
+        size_t n = fread(cmdline, 1, sizeof(cmdline) - 1, cmd);
+        fclose(cmd);
+
+        if (n == 0) continue;
+
+        for (size_t i = 0; i < n; i++) {
+            if (cmdline[i] == '\0') cmdline[i] = ' ';
+        }
+        cmdline[n] = '\0';
+
+        if (contains_debugger_name(cmdline)) {
+            LOGW("[ANTI] Debugger process detected: pid=%s cmd=%s",
+                 entry->d_name, cmdline);
+        }
+    }
+
+    closedir(proc_dir);
+}
+
 // ==================== DEBUGGER HIDING ====================
 
 int hide_debugger(void) {
@@ -201,15 +260,8 @@ int hide_debugger(void) {
         closedir(task_dir);
     }
 
-    // 3. Check for debuggers in process list
-    FILE *ps = popen("ps -A 2>/dev/null | grep -E 'gdb|lldb|strace|ltrace|frida|ida'", "r");
-    if (ps) {
-        char line[256];
-        while (fgets(line, sizeof(line), ps)) {
-            LOGW("[ANTI] Debugger process detected: %s", line);
-        }
-        pclose(ps);
-    }
+    // 3. Check for debugger processes without spawning a shell.
+    scan_proc_for_debuggers();
 
     LOGI("[ANTI] Debugger hiding complete");
     return 0;

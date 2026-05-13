@@ -320,7 +320,10 @@ static void *generate_trampoline(void *target, size_t hook_size) {
     // br x16
     code[idx++] = 0xD61F0200;
 
-    __builtin___clear_cache(trampoline, (char *)trampoline + JIT_PAGE_SIZE);
+    if (jit_protect_code(trampoline, (size_t)idx * sizeof(uint32_t)) != 0) {
+        LOGE("[HOOK] Failed to protect trampoline");
+        return NULL;
+    }
 
     return trampoline;
 }
