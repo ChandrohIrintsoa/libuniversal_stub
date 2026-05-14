@@ -6,6 +6,8 @@ HOST_ARCH := $(shell uname -m)
 
 # Default target architecture
 TARGET_ARCH ?= arm64-v8a
+HOST_TARGET_ARCH := x86_64
+ANDROID_ARCHS := arm64-v8a armeabi-v7a x86_64 x86
 
 # NDK configuration (updated for NDK r26/r27/r28)
 NDK_CANDIDATES := \
@@ -21,7 +23,7 @@ HOST_BUILD := 0
 
 ifeq ($(strip $(NDK_PATH)),)
     HOST_BUILD := 1
-    override TARGET_ARCH := x86_64
+    override TARGET_ARCH := $(HOST_TARGET_ARCH)
 endif
 
 # Toolchain selection
@@ -112,9 +114,9 @@ endif
 # all-archs intentionally builds the single host target instead of reusing
 # Android-specific -march flags with the host compiler.
 ifeq ($(HOST_BUILD),1)
-    ALL_ARCHS := x86_64
+    ALL_ARCHS := $(HOST_TARGET_ARCH)
 else
-    ALL_ARCHS := arm64-v8a armeabi-v7a x86_64 x86
+    ALL_ARCHS := $(ANDROID_ARCHS)
 endif
 
 # ==================== TARGETS ====================
@@ -195,6 +197,9 @@ x86:
 
 # Build all architectures
 all-archs:
+	@if [ "$(HOST_BUILD)" = "1" ]; then \
+	        echo "NDK not found; building host compatibility target ($(HOST_TARGET_ARCH)) only."; \
+	fi
 	@for arch in $(ALL_ARCHS); do \
 	        echo ""; \
 	        echo "========================================"; \
